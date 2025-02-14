@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "/airlineBooking";
+
+service FlightBooking {
+  rpc GetSeats (GetSeatsRequest) returns (GetSeatsResponse);
+  rpc ProposeBookSeats (BookSeatsRequest) returns (BookSeatsResponse);
+  rpc CommitBookSeats (BookSeatsRequest) returns (BookSeatsResponse);
+  rpc CancelBookSeats (BookSeatsRequest) returns (BookSeatsResponse);
+}
+
+message GetSeatsRequest {
+  string flight_id = 1;
+}
+
+message GetSeatsResponse {
+  int32 available_seats = 1;
+  string message = 2;
+}
+
+message BookSeatsRequest {
+  string tx_id = 1;
+  string flight_id = 2;       
+  int32 seat_count = 3;             
+}
+
+message BookSeatsResponse {
+  bool success = 1;       
+  string message = 2;        
+}

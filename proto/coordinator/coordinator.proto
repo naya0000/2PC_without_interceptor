@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package coordinator;
+
+option go_package = "/coordinator";
+
+service TransactionCoordinator {
+  rpc StartTransaction (StartTransactionRequest) returns (StartTransactionResponse);
+}
+
+message StartTransactionRequest {
+  string tx_id = 1;
+  repeated Operation operations = 2;
+}
+
+message Operation {
+  string service = 1;
+  string method = 2;
+  bytes request = 3;
+}
+
+message StartTransactionResponse {
+  bool success = 1;
+  string message = 2;
+}

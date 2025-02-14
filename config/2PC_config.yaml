@@ -1,0 +1,7 @@
+services:
+  - service: "localhost:50051"
+    method: "BookSeats"
+    primary_key: "FlightId"
+  - service: "localhost:50052"
+    method: "BookSeats"
+    primary_key: "FlightId"
