@@ -4,10 +4,12 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
 	"reflect"
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/yaml.v2"
 
 	airlinepb "github.com/naya0000/2PC_without_interceptor/proto/airlineBooking"
 	coordinatorpb "github.com/naya0000/2PC_without_interceptor/proto/coordinator"
@@ -37,6 +39,7 @@ type ServiceConfig struct {
 
 type CoordinatorServer struct {
 	coordinatorpb.UnimplementedTransactionCoordinatorServer
+	Config *Config
 }
 
 // 檢查錯誤是否可重試
@@ -55,11 +58,26 @@ func isRetryableError(err error) bool {
 	return true
 }
 
+func loadConfig(path string) (*Config, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
 func (s *CoordinatorServer) StartTransaction(ctx context.Context, req *coordinatorpb.StartTransactionRequest) (*coordinatorpb.StartTransactionResponse, error) {
 	log.Printf("Starting transactionId: %s", req.TxId)
 
 	// 創建獨立的 context，避免共享問題
-	newCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	newCtx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
 	newCtx = metadata.AppendToOutgoingContext(newCtx, "TxId", req.TxId)
@@ -68,37 +86,66 @@ func (s *CoordinatorServer) StartTransaction(ctx context.Context, req *coordinat
 	var proposedOperations []ProposedOperation
 
 	for _, operation := range req.Operations {
-		// 1. Propose Phase
-		success := s.executeOperation(newCtx, operation, "propose", req.TxId)
-		if success {
-			proposedOperation := ProposedOperation{Operation: operation}
-			proposedOperations = append(proposedOperations, proposedOperation)
-			log.Printf("proposedOperations: %v", proposedOperations)
-		} else {
-			log.Printf("[Propose Phase] Operation failed, entering Cancel Phase")
+		for i, svc := range s.Config.Services {
+			if operation.Service == svc.Service && operation.Method == svc.Method {
+				// 1. Propose Phase
+				success := s.executeOperation(newCtx, operation, "propose", req.TxId)
+				if success {
+					proposedOperation := ProposedOperation{Operation: operation}
+					proposedOperations = append(proposedOperations, proposedOperation)
+					log.Printf("proposedOperations: %v", proposedOperations)
+					break
+				} else {
+					log.Printf("[Propose Phase] Operation failed, entering Cancel Phase")
 
-			// 2-(b). Cancel Phase：取消已 Propose 的操作
-			for _, cancelOp := range proposedOperations {
-				log.Printf("[Cancel Phase] Cancelling operation: Service=%s Method=%s", cancelOp.Operation.Service, cancelOp.Operation.Method)
-				s.executeOperation(newCtx, cancelOp.Operation, "cancel", req.TxId)
+					// 2-(b). Cancel Phase：取消已 Propose 的操作
+					for _, cancelOp := range proposedOperations {
+						log.Printf("[Cancel Phase] Cancelling operation: Service=%s Method=%s", cancelOp.Operation.Service, cancelOp.Operation.Method)
+						s.executeOperation(newCtx, cancelOp.Operation, "cancel", req.TxId)
+					}
+
+					return &coordinatorpb.StartTransactionResponse{
+						Success: false,
+						Message: "Transaction failed in propose phase for operation: " + operation.Service + " " + operation.Method,
+					}, nil
+				}
 			}
+			// Operation that don't need to do 2PC
+			if i == len(s.Config.Services)-1 {
+				// success := s.executeOperation(newCtx, operation, "", req.TxId)
+				// if success {
+				// 	log.Printf("Operation succeeded: Service=%s, Method=%s", operation.Service, operation.Method)
+				// } else {
+				log.Printf("Operation failed, entering Cancel Phase")
 
-			return &coordinatorpb.StartTransactionResponse{
-				Success: false,
-				Message: "Transaction failed in propose phase for operation: " + operation.Service + " " + operation.Method,
-			}, nil
+				// 2-(b). Cancel Phase：取消已 Propose 的操作
+				for _, cancelOp := range proposedOperations {
+					log.Printf("[Cancel Phase] Cancelling operation: Service=%s Method=%s", cancelOp.Operation.Service, cancelOp.Operation.Method)
+					s.executeOperation(newCtx, cancelOp.Operation, "cancel", req.TxId)
+				}
+
+				return &coordinatorpb.StartTransactionResponse{
+					Success: false,
+					Message: "Transaction failed in operation: " + operation.Service + " " + operation.Method,
+				}, nil
+				// }
+			}
 		}
 	}
 
 	// 2-(a). Commit Phase
 	for _, operation := range req.Operations {
-		success := s.executeOperation(newCtx, operation, "commit", req.TxId)
-		if !success {
-			log.Printf("[Commit Phase] Operation failed.")
-			return &coordinatorpb.StartTransactionResponse{
-				Success: false,
-				Message: "Transaction failed in Commit Phase",
-			}, nil
+		for _, svc := range s.Config.Services {
+			if operation.Service == svc.Service && operation.Method == svc.Method {
+				success := s.executeOperation(newCtx, operation, "commit", req.TxId)
+				if !success {
+					log.Printf("[Commit Phase] Operation failed.")
+					return &coordinatorpb.StartTransactionResponse{
+						Success: false,
+						Message: "Transaction failed in Commit Phase",
+					}, nil
+				}
+			}
 		}
 	}
 
@@ -115,6 +162,8 @@ func (s *CoordinatorServer) executeOperation(ctx context.Context, operation *coo
 		methodName = "Propose" + operation.Method
 	} else if phase == "commit" {
 		methodName = "Commit" + operation.Method
+	} else if phase == "cancel" {
+		methodName = "Cancel" + operation.Method
 	} else {
 		methodName = operation.Method
 	}
@@ -158,13 +207,17 @@ func (s *CoordinatorServer) executeOperation(ctx context.Context, operation *coo
 }
 
 func main() {
+	config, err := loadConfig("/Users/naya/mygo/src/2PC_without_interceptor/config/2PC_config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 	listener, err := net.Listen("tcp", ":50050")
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
 	grpcServer := grpc.NewServer()
-	coordinatorpb.RegisterTransactionCoordinatorServer(grpcServer, &CoordinatorServer{})
+	coordinatorpb.RegisterTransactionCoordinatorServer(grpcServer, &CoordinatorServer{Config: config})
 
 	log.Printf("Coordinator server listening on %v", listener.Addr())
 	if err := grpcServer.Serve(listener); err != nil {

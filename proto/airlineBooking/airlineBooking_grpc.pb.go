@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.18.1
-// source: airlineBooking/airlineBooking.proto
+// source: airlineBooking.proto
 
 package airlineBooking
 
@@ -231,5 +231,5 @@ var FlightBooking_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "airlineBooking/airlineBooking.proto",
+	Metadata: "airlineBooking.proto",
 }

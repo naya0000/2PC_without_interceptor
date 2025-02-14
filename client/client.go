@@ -22,7 +22,7 @@ func startTransaction(txID string, operations []*coordinatorpb.Operation, coordi
 	}
 
 	// 建立上下文和超時
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
 	// 發起交易
@@ -49,13 +49,13 @@ func main() {
 
 	flightId1 := "flight1"
 	flightId2 := "flight2"
-	flightId3 := "flight3"
+	// flightId3 := "flight3"
 
 	getSeatsReq1 := &airlinepb.GetSeatsRequest{FlightId: flightId1}
 	getSeatsReqBytes1, _ := proto.Marshal(getSeatsReq1)
 
-	getSeatsReq2 := &airlinepb.GetSeatsRequest{FlightId: flightId2}
-	getSeatsReqBytes2, _ := proto.Marshal(getSeatsReq2)
+	// getSeatsReq2 := &airlinepb.GetSeatsRequest{FlightId: flightId2}
+	// getSeatsReqBytes2, _ := proto.Marshal(getSeatsReq2)
 
 	bookSeatsReq1 := &airlinepb.BookSeatsRequest{FlightId: flightId1, SeatCount: 2}
 	bookSeatsReqBytes1, _ := proto.Marshal(bookSeatsReq1)
@@ -63,22 +63,22 @@ func main() {
 	bookSeatsReq2 := &airlinepb.BookSeatsRequest{FlightId: flightId2, SeatCount: 2}
 	bookSeatsReqBytes2, _ := proto.Marshal(bookSeatsReq2)
 
-	bookSeatsReq3 := &airlinepb.BookSeatsRequest{FlightId: flightId3, SeatCount: 2}
-	bookSeatsReqBytes3, _ := proto.Marshal(bookSeatsReq3)
+	// bookSeatsReq3 := &airlinepb.BookSeatsRequest{FlightId: flightId3, SeatCount: 2}
+	// bookSeatsReqBytes3, _ := proto.Marshal(bookSeatsReq3)
 
 	op1 := &coordinatorpb.Operation{Service: "localhost:50051", Method: "GetSeats", Request: getSeatsReqBytes1}
-	op2 := &coordinatorpb.Operation{Service: "localhost:50052", Method: "GetSeats", Request: getSeatsReqBytes2}
+	// op2 := &coordinatorpb.Operation{Service: "localhost:50052", Method: "GetSeats", Request: getSeatsReqBytes2}
 	op3 := &coordinatorpb.Operation{Service: "localhost:50051", Method: "BookSeats", Request: bookSeatsReqBytes1}
 	op4 := &coordinatorpb.Operation{Service: "localhost:50052", Method: "BookSeats", Request: bookSeatsReqBytes2}
-	op5 := &coordinatorpb.Operation{Service: "localhost:50052", Method: "BookSeats", Request: bookSeatsReqBytes3}
+	// op5 := &coordinatorpb.Operation{Service: "localhost:50052", Method: "BookSeats", Request: bookSeatsReqBytes3}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var results []string
 
 	transactions := map[string][]*coordinatorpb.Operation{
-		"tx001": {op1, op3, op4},
-		"tx002": {op3, op4, op5, op2},
+		"tx001": {op3, op4, op1},
+		// "tx002": {op3, op4, op5, op2},
 		// "tx003": {op1, op2, op3, op4},
 	}
 

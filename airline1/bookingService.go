@@ -145,6 +145,15 @@ func (s *FlightBookingServer) CommitBookSeats(ctx context.Context, req *airlinep
 	return &airlinepb.BookSeatsResponse{Message: "Seats booked successfully"}, nil
 }
 
+// Cancel phase
+func (s *FlightBookingServer) CancelBookSeats(ctx context.Context, req *airlinepb.BookSeatsRequest) (*airlinepb.BookSeatsResponse, error) {
+	log.Printf("[Cancel] Booking %d seats for flight %s for txId %s", req.SeatCount, req.FlightId, req.TxId)
+
+	s.localDB.RecordTransaction(req.TxId, req.FlightId, "cancelled")
+
+	return &airlinepb.BookSeatsResponse{Message: "Seats booked successfully"}, nil
+}
+
 func main() {
 	connStr := "host=localhost port=5432 user=postgres dbname=airline1_no_2PC sslmode=disable"
 	db, err := sql.Open("postgres", connStr)
