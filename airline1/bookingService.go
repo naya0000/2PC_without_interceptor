@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 
 	_ "github.com/lib/pq"
 	airlinepb "github.com/naya0000/2PC_without_interceptor/proto/airlineBooking"
@@ -15,30 +14,34 @@ import (
 
 type FlightBookingServer struct {
 	airlinepb.UnimplementedFlightBookingServer
-	db      *sql.DB
-	localDB *Database
+	db *sql.DB
 }
 
 type Transaction struct {
-	PrimaryKey string // flightId
+	TxID       string
+	PrimaryKey string
 	Status     string
 }
 
-type Database struct {
-	mu           sync.Mutex
-	transactions map[string]Transaction
-}
-
-func NewDatabase() *Database {
-	return &Database{transactions: make(map[string]Transaction)}
-}
-
 // 初始化 PostgreSQL 連接
-func NewFlightBookingServer(db *sql.DB, localDB *Database) *FlightBookingServer {
-	return &FlightBookingServer{db: db, localDB: localDB}
+func NewFlightBookingServer(db *sql.DB) *FlightBookingServer {
+	return &FlightBookingServer{db: db}
 }
 
-func initDB(db *sql.DB) error {
+func createTxTable(db *sql.DB) error {
+	_, _ = db.Exec("DROP TABLE IF EXISTS transactions")
+	createTableQuery := `
+	CREATE TABLE transactions (
+		tx_id VARCHAR(255),
+		primary_key VARCHAR(255),
+		status VARCHAR(50),
+		PRIMARY KEY (tx_id, primary_key)
+	);`
+	_, err := db.Exec(createTableQuery)
+	return err
+}
+
+func createFlightsTable(db *sql.DB) error {
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS flights (
 	    flight_id VARCHAR(255) PRIMARY KEY,
@@ -55,30 +58,29 @@ func initDB(db *sql.DB) error {
 	SELECT 'flight1', 100 WHERE NOT EXISTS (SELECT 1 FROM flights WHERE flight_id = 'flight1');
 	INSERT INTO flights (flight_id, available_seat) 
 	SELECT 'flight2', 200 WHERE NOT EXISTS (SELECT 1 FROM flights WHERE flight_id = 'flight2');
+	INSERT INTO flights (flight_id, available_seat) 
+	SELECT 'flight3', 300 WHERE NOT EXISTS (SELECT 1 FROM flights WHERE flight_id = 'flight3');
 	`
 	_, err = db.Exec(insertDataQuery)
 	return err
 }
 
-// 檢查 PrimaryKey 是否被其他 tx 鎖定
-func (db *Database) IsLocked(primaryKey string) bool {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	for _, tx := range db.transactions {
-		if tx.PrimaryKey == primaryKey && tx.Status == "prepared" {
-			return true
-		}
+// 透過 PrimaryKey 檢查資源是否被其他 tx 鎖定
+func (s *FlightBookingServer) IsLocked(primaryKey string) bool {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM transactions WHERE primary_key = $1 AND status = 'prepared'", primaryKey).Scan(&count)
+	if err != nil {
+		log.Printf("Failed to check if resource is locked: %v", err)
+		return false
 	}
-	return false
+	return count > 0
 }
 
 // lock resource
-func (db *Database) RecordTransaction(txID, primaryKey, status string) {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	db.transactions[txID] = Transaction{
-		PrimaryKey: primaryKey,
-		Status:     status,
+func (s *FlightBookingServer) RecordTransaction(txID, primaryKey, status string) {
+	_, err := s.db.Exec("INSERT INTO transactions (tx_id, primary_key, status) VALUES ($1, $2, $3) ON CONFLICT (tx_id, primary_key) DO UPDATE SET status = $3", txID, primaryKey, status)
+	if err != nil {
+		log.Printf("Failed to record transaction: %v", err)
 	}
 }
 
@@ -107,10 +109,10 @@ func (s *FlightBookingServer) GetSeats(ctx context.Context, req *airlinepb.GetSe
 func (s *FlightBookingServer) ProposeBookSeats(ctx context.Context, req *airlinepb.BookSeatsRequest) (*airlinepb.BookSeatsResponse, error) {
 	log.Printf("[Propose] Booking %d seats for flight %s for txId %s", req.SeatCount, req.FlightId, req.TxId)
 
-	if s.localDB.IsLocked(req.FlightId) {
+	if s.IsLocked(req.FlightId) {
 		return nil, fmt.Errorf("resource %s is already locked", req.FlightId)
 	}
-	s.localDB.RecordTransaction(req.TxId, req.FlightId, "prepared")
+	s.RecordTransaction(req.TxId, req.FlightId, "prepared")
 
 	return &airlinepb.BookSeatsResponse{Message: "Resource locked successfully"}, nil
 }
@@ -119,7 +121,7 @@ func (s *FlightBookingServer) ProposeBookSeats(ctx context.Context, req *airline
 func (s *FlightBookingServer) CommitBookSeats(ctx context.Context, req *airlinepb.BookSeatsRequest) (*airlinepb.BookSeatsResponse, error) {
 	log.Printf("[Commit] Booking %d seats for flight %s for txId %s", req.SeatCount, req.FlightId, req.TxId)
 
-	s.localDB.RecordTransaction(req.TxId, req.FlightId, "committed")
+	s.RecordTransaction(req.TxId, req.FlightId, "committed")
 
 	// 開啟交易
 	tx, err := s.db.Begin()
@@ -149,7 +151,7 @@ func (s *FlightBookingServer) CommitBookSeats(ctx context.Context, req *airlinep
 func (s *FlightBookingServer) CancelBookSeats(ctx context.Context, req *airlinepb.BookSeatsRequest) (*airlinepb.BookSeatsResponse, error) {
 	log.Printf("[Cancel] Booking %d seats for flight %s for txId %s", req.SeatCount, req.FlightId, req.TxId)
 
-	s.localDB.RecordTransaction(req.TxId, req.FlightId, "cancelled")
+	s.RecordTransaction(req.TxId, req.FlightId, "cancelled")
 
 	return &airlinepb.BookSeatsResponse{Message: "Seats booked successfully"}, nil
 }
@@ -162,11 +164,17 @@ func main() {
 	}
 	defer db.Close()
 
-	// 初始化 table
-	if err := initDB(db); err != nil {
+	// 初始化 flights table
+	if err := createFlightsTable(db); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	log.Println("Database initialized successfully!")
+	log.Println("Flights Table initialized successfully!")
+
+	// 初始化 transactions table
+	if err := createTxTable(db); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	log.Println("Transactions Table initialized successfully!")
 
 	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
@@ -175,9 +183,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 
-	localDB := NewDatabase()
-
-	airlinepb.RegisterFlightBookingServer(grpcServer, NewFlightBookingServer(db, localDB))
+	airlinepb.RegisterFlightBookingServer(grpcServer, NewFlightBookingServer(db))
 
 	log.Printf("Server listening at %v", listener.Addr())
 	if err := grpcServer.Serve(listener); err != nil {

@@ -112,23 +112,23 @@ func (s *CoordinatorServer) StartTransaction(ctx context.Context, req *coordinat
 			}
 			// Operation that don't need to do 2PC
 			if i == len(s.Config.Services)-1 {
-				// success := s.executeOperation(newCtx, operation, "", req.TxId)
-				// if success {
-				// 	log.Printf("Operation succeeded: Service=%s, Method=%s", operation.Service, operation.Method)
-				// } else {
-				log.Printf("Operation failed, entering Cancel Phase")
+				success := s.executeOperation(newCtx, operation, "", req.TxId)
+				if success {
+					log.Printf("Operation succeeded: Service=%s, Method=%s", operation.Service, operation.Method)
+				} else {
+					log.Printf("Operation failed, entering Cancel Phase")
 
-				// 2-(b). Cancel Phase：取消已 Propose 的操作
-				for _, cancelOp := range proposedOperations {
-					log.Printf("[Cancel Phase] Cancelling operation: Service=%s Method=%s", cancelOp.Operation.Service, cancelOp.Operation.Method)
-					s.executeOperation(newCtx, cancelOp.Operation, "cancel", req.TxId)
+					// 2-(b). Cancel Phase：取消已 Propose 的操作
+					for _, cancelOp := range proposedOperations {
+						log.Printf("[Cancel Phase] Cancelling operation: Service=%s Method=%s", cancelOp.Operation.Service, cancelOp.Operation.Method)
+						s.executeOperation(newCtx, cancelOp.Operation, "cancel", req.TxId)
+					}
+
+					return &coordinatorpb.StartTransactionResponse{
+						Success: false,
+						Message: "Transaction failed in operation: " + operation.Service + " " + operation.Method,
+					}, nil
 				}
-
-				return &coordinatorpb.StartTransactionResponse{
-					Success: false,
-					Message: "Transaction failed in operation: " + operation.Service + " " + operation.Method,
-				}, nil
-				// }
 			}
 		}
 	}
