@@ -93,7 +93,7 @@ func (s *CoordinatorServer) StartTransaction(ctx context.Context, req *coordinat
 				if success {
 					proposedOperation := ProposedOperation{Operation: operation}
 					proposedOperations = append(proposedOperations, proposedOperation)
-					log.Printf("proposedOperations: %v", proposedOperations)
+					// log.Printf("proposedOperations: %v", proposedOperations)
 					break
 				} else {
 					log.Printf("[Propose Phase] Operation failed, entering Cancel Phase")

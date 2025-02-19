@@ -29,7 +29,7 @@ func NewFlightBookingServer(db *sql.DB) *FlightBookingServer {
 }
 
 func createTxTable(db *sql.DB) error {
-	_, _ = db.Exec("DROP TABLE IF EXISTS transactions")
+	db.Exec("DROP TABLE IF EXISTS transactions")
 	createTableQuery := `
 	CREATE TABLE transactions (
 		tx_id VARCHAR(255),
@@ -77,11 +77,27 @@ func (s *FlightBookingServer) IsLocked(primaryKey string) bool {
 }
 
 // lock resource
-func (s *FlightBookingServer) RecordTransaction(txID, primaryKey, status string) {
-	_, err := s.db.Exec("INSERT INTO transactions (tx_id, primary_key, status) VALUES ($1, $2, $3) ON CONFLICT (tx_id, primary_key) DO UPDATE SET status = $3", txID, primaryKey, status)
+func (s *FlightBookingServer) RecordTransaction(txID, primaryKey, status string) error {
+	// 開啟交易
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("INSERT INTO transactions (tx_id, primary_key, status) VALUES ($1, $2, $3) ON CONFLICT (tx_id, primary_key) DO UPDATE SET status = $3", txID, primaryKey, status)
 	if err != nil {
 		log.Printf("Failed to record transaction: %v", err)
+		return err
 	}
+
+	// 提交交易
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Transaction commit failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 // 查詢可用座位
@@ -157,7 +173,7 @@ func (s *FlightBookingServer) CancelBookSeats(ctx context.Context, req *airlinep
 }
 
 func main() {
-	connStr := "host=localhost port=5432 user=postgres dbname=airline1_no_2PC sslmode=disable"
+	connStr := "host=localhost port=5432 user=postgres dbname=airline1_no_interceptor sslmode=disable"
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
