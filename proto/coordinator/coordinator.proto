@@ -14,12 +14,14 @@ message StartTransactionRequest {
 }
 
 message Operation {
-  string service = 1;
-  string method = 2;
-  bytes request = 3;
+  string address = 1;
+  string service = 2;
+  string method = 3;
+  bytes request = 4;
 }
 
 message StartTransactionResponse {
   bool success = 1;
   string message = 2;
+  repeated int32 resp_values = 3;
 }

@@ -28,6 +28,7 @@ message BookSeatsRequest {
 }
 
 message BookSeatsResponse {
-  bool success = 1;       
-  string message = 2;        
+  int32 available_seats = 1;
+  bool success = 2;       
+  string message = 3;        
 }
