@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net"
 
 	_ "github.com/lib/pq"
@@ -58,6 +59,35 @@ func createFlightsTable(db *sql.DB) error {
 	SELECT 'flight1', 2000 WHERE NOT EXISTS (SELECT 1 FROM flights WHERE flight_id = 'flight1');
 	`
 	_, err = db.Exec(insertDataQuery)
+	return err
+}
+
+func createOrdersTable(db *sql.DB) error {
+	db.Exec(`DROP TABLE IF EXISTS orders;`)
+	createTableQuery := `
+	CREATE TABLE orders (
+	    order_id VARCHAR(255) PRIMARY KEY,
+		flight_id VARCHAR(255),
+		status VARCHAR(50)
+	);`
+
+	_, err := db.Exec(createTableQuery)
+	if err != nil {
+		return err
+	}
+
+	// 建立對應 flight1 的 100 筆可取消訂單
+	for i := 1; i <= 10; i++ {
+		orderID := fmt.Sprintf("order%03d", i)
+		_, err := db.Exec(`
+			INSERT INTO orders (order_id, flight_id, status)
+			VALUES ($1, 'flight1', 'booked')
+			ON CONFLICT (order_id) DO NOTHING;
+		`, orderID)
+		if err != nil {
+			return fmt.Errorf("failed to insert order %s: %v", orderID, err)
+		}
+	}
 	return err
 }
 
@@ -235,6 +265,11 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	log.Println("Flights Table initialized successfully!")
+
+	// 初始化 orders table
+	if err := createOrdersTable(db); err != nil {
+		log.Fatalf("Failed to initialize orders table: %v", err)
+	}
 
 	// 初始化 transactions table
 	if err := createTxTable(db); err != nil {

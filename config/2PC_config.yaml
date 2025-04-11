@@ -1,11 +1,9 @@
 services:
   - service: "FlightBooking"
     address: "localhost:50051"
-    pb: "proto/airlineBooking"
     method: "BookSeats"
     primary_key: "FlightId"
   - service: "FlightBooking"
     address: "localhost:50052"
-    pb: "proto/airlineBooking"
     method: "BookSeats"
     primary_key: "FlightId"
