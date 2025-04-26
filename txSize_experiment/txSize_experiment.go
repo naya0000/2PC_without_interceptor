@@ -83,8 +83,8 @@ func main() {
 	writer.Write([]string{"TransactionSize", "SuccessRate(%)", "SuccessCount", "TPS", "AvgLatency(s)", "Latency Outlier Count"})
 
 	// 測試 n 筆交易
-	for _, txSize := range []int{10, 20, 30, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500} {
-		// for _, txSize := range []int{350} {
+	// for _, txSize := range []int{10, 20, 30, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500} {
+	for _, txSize := range []int{10, 20, 30, 50, 100, 150} {
 		log.Printf("Running with transaction size: %d", txSize)
 
 		cmd := exec.Command("go", "run", "../coordinator/coordinator.go")
@@ -111,10 +111,10 @@ func main() {
 		bookSeatsReq2 := &airlinepb.BookSeatsRequest{FlightId: flightId1, SeatCount: 1}
 		bookSeatsReqBytes2, _ := proto.Marshal(bookSeatsReq2)
 		// 192.168.0.126
-		op1 := &coordinatorpb.Operation{Address: "localhost:50051", Service: "FlightBooking", Method: "GetSeats", Request: getSeatsReqBytes1}
-		op2 := &coordinatorpb.Operation{Address: "localhost:50052", Service: "FlightBooking", Method: "GetSeats", Request: getSeatsReqBytes2}
-		op3 := &coordinatorpb.Operation{Address: "localhost:50051", Service: "FlightBooking", Method: "BookSeats", Request: bookSeatsReqBytes1}
-		op4 := &coordinatorpb.Operation{Address: "localhost:50052", Service: "FlightBooking", Method: "BookSeats", Request: bookSeatsReqBytes2}
+		op1 := &coordinatorpb.Operation{Address: "192.168.0.125:50051", Service: "FlightBooking", Method: "GetSeats", Request: getSeatsReqBytes1}
+		op2 := &coordinatorpb.Operation{Address: "192.168.0.125:50052", Service: "FlightBooking", Method: "GetSeats", Request: getSeatsReqBytes2}
+		op3 := &coordinatorpb.Operation{Address: "192.168.0.125:50051", Service: "FlightBooking", Method: "BookSeats", Request: bookSeatsReqBytes1}
+		op4 := &coordinatorpb.Operation{Address: "192.168.0.125:50052", Service: "FlightBooking", Method: "BookSeats", Request: bookSeatsReqBytes2}
 
 		transactions := make(map[string][]*coordinatorpb.Operation)
 		var wg sync.WaitGroup

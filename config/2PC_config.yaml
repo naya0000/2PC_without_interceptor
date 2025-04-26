@@ -1,5 +1,13 @@
 services:
   - service: "FlightBooking"
+    address: "192.168.0.125:50051"
+    method: "BookSeats"
+    primary_key: "FlightId"
+  - service: "FlightBooking"
+    address: "192.168.0.125:50052"
+    method: "BookSeats"
+    primary_key: "FlightId"
+  - service: "FlightBooking"
     address: "localhost:50051"
     method: "BookSeats"
     primary_key: "FlightId"

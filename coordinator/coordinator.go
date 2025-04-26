@@ -50,7 +50,7 @@ var (
 	clientCache sync.Map
 )
 
-var proposeTimeout = 20 * time.Second // 預設值
+var proposeTimeout = 5 * time.Second // 預設值
 
 func loadConfig(path string) (*Config, error) {
 	file, err := os.Open(path)
